@@ -41,6 +41,7 @@ public class Rule {
   private BigDecimal limit;
   private Integer windowMinutes;
   private ControlType controlType;
+  private WindowType windowType;
 
   public Long getWindowMillis() {
     return Time.minutes(this.windowMinutes).toMilliseconds();
@@ -118,5 +119,12 @@ public class Rule {
     CLEAR_STATE_ALL_STOP,
     DELETE_RULES_ALL,
     EXPORT_RULES_CURRENT
+  }
+
+  public enum WindowType {
+      GROWTH_WINDOW,
+    TUMBLING_WINDOWS,
+    SLIDING_WINDOW,
+    SESSION_WINDOW
   }
 }

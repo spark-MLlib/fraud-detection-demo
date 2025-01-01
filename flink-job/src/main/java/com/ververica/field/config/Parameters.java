@@ -60,6 +60,7 @@ public class Parameters {
 
   public static final Param<String> DATA_TOPIC = Param.string("data-topic", "livetransactions");
   public static final Param<String> ALERTS_TOPIC = Param.string("alerts-topic", "alerts");
+  public static final Param<String> METRICS_TOPIC = Param.string("metrics-topic", "alerts");
   public static final Param<String> RULES_TOPIC = Param.string("rules-topic", "rules");
   public static final Param<String> LATENCY_TOPIC = Param.string("latency-topic", "latency");
   public static final Param<String> RULES_EXPORT_TOPIC =
@@ -86,6 +87,7 @@ public class Parameters {
   public static final Param<String> RULES_SOURCE = Param.string("rules-source", "SOCKET");
   public static final Param<String> TRANSACTIONS_SOURCE = Param.string("data-source", "GENERATOR");
   public static final Param<String> ALERTS_SINK = Param.string("alerts-sink", "STDOUT");
+  public static final Param<String> METRICS_SINK = Param.string("metrics-sink", "STDOUT");
   public static final Param<String> LATENCY_SINK = Param.string("latency-sink", "STDOUT");
   public static final Param<String> RULES_EXPORT_SINK = Param.string("rules-export-sink", "STDOUT");
 
@@ -109,7 +111,7 @@ public class Parameters {
       Arrays.asList(
           KAFKA_HOST,
           DATA_TOPIC,
-          ALERTS_TOPIC,
+          ALERTS_TOPIC, METRICS_TOPIC,
           RULES_TOPIC,
           LATENCY_TOPIC,
           RULES_EXPORT_TOPIC,
@@ -122,6 +124,7 @@ public class Parameters {
           RULES_SOURCE,
           TRANSACTIONS_SOURCE,
           ALERTS_SINK,
+          METRICS_SINK,
           LATENCY_SINK,
           RULES_EXPORT_SINK);
 

@@ -18,25 +18,15 @@
 
 package com.ververica.field.dynamicrules;
 
-import static com.ververica.field.config.Parameters.CHECKPOINT_INTERVAL;
-import static com.ververica.field.config.Parameters.ENABLE_CHECKPOINTS;
-import static com.ververica.field.config.Parameters.LOCAL_EXECUTION;
-import static com.ververica.field.config.Parameters.MIN_PAUSE_BETWEEN_CHECKPOINTS;
-import static com.ververica.field.config.Parameters.OUT_OF_ORDERNESS;
-import static com.ververica.field.config.Parameters.RULES_SOURCE;
-import static com.ververica.field.config.Parameters.SOURCE_PARALLELISM;
-
 import com.ververica.field.config.Config;
 import com.ververica.field.dynamicrules.functions.AverageAggregate;
-import com.ververica.field.dynamicrules.functions.DynamicAlertFunction;
+import com.ververica.field.dynamicrules.functions.DynamicMetricsCalcFunction;
 import com.ververica.field.dynamicrules.functions.DynamicKeyFunction;
-import com.ververica.field.dynamicrules.sinks.AlertsSink;
 import com.ververica.field.dynamicrules.sinks.CurrentRulesSink;
 import com.ververica.field.dynamicrules.sinks.LatencySink;
+import com.ververica.field.dynamicrules.sinks.MetricsSink;
 import com.ververica.field.dynamicrules.sources.RulesSource;
 import com.ververica.field.dynamicrules.sources.TransactionsSource;
-import java.io.IOException;
-import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.state.MapStateDescriptor;
@@ -54,12 +44,17 @@ import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrderness
 import org.apache.flink.streaming.api.windowing.time.Time;
 import org.apache.flink.util.OutputTag;
 
+import java.io.IOException;
+import java.util.concurrent.TimeUnit;
+
+import static com.ververica.field.config.Parameters.*;
+
 @Slf4j
-public class RulesEvaluator {
+public class MetricsEvaluator {
 
   private Config config;
 
-  RulesEvaluator(Config config) {
+  MetricsEvaluator(Config config) {
     this.config = config;
   }
 
@@ -78,6 +73,9 @@ public class RulesEvaluator {
     if (enableCheckpoints) {
       env.enableCheckpointing(checkpointsInterval);
       env.getCheckpointConfig().setMinPauseBetweenCheckpoints(minPauseBtwnCheckpoints);
+      env.getCheckpointConfig().setCheckpointInterval(config.get(CHECKPOINT_INTERVAL));
+      env.getCheckpointConfig()
+              .setMinPauseBetweenCheckpoints(config.get(MIN_PAUSE_BETWEEN_CHECKPOINTS));
     }
 
     // Streams setup
@@ -87,37 +85,37 @@ public class RulesEvaluator {
     BroadcastStream<Rule> rulesStream = rulesUpdateStream.broadcast(Descriptors.rulesDescriptor);
 
     // Processing pipeline setup
-    DataStream<Alert> alerts =
+    DataStream<Metric> metrics =
         transactions
+                // todo: 生成waterMark
             .connect(rulesStream)
             .process(new DynamicKeyFunction())
             .uid("DynamicKeyFunction")
             .name("Dynamic Partitioning Function")
             .keyBy((keyed) -> keyed.getKey())
             .connect(rulesStream)
-            .process(new DynamicAlertFunction())
-            .uid("DynamicAlertFunction")
-            .name("Dynamic Rule Evaluation Function");
+            .process(new DynamicMetricsCalcFunction())
+            .uid("DynamicMetricsCalcFunction")
+            .name("Dynamic Metrics Evaluation Function");
 
-    DataStream<String> allRuleEvaluations =
-        ((SingleOutputStreamOperator<Alert>) alerts).getSideOutput(Descriptors.demoSinkTag);
+    DataStream<String> allMetricsEvaluations =
+        ((SingleOutputStreamOperator<Metric>) metrics).getSideOutput(Descriptors.demoSinkTag);
 
     DataStream<Long> latency =
-        ((SingleOutputStreamOperator<Alert>) alerts).getSideOutput(Descriptors.latencySinkTag);
+        ((SingleOutputStreamOperator<Metric>) metrics).getSideOutput(Descriptors.latencySinkTag);
 
     DataStream<Rule> currentRules =
-        ((SingleOutputStreamOperator<Alert>) alerts).getSideOutput(Descriptors.currentRulesSinkTag);
+        ((SingleOutputStreamOperator<Metric>) metrics).getSideOutput(Descriptors.currentRulesSinkTag);
 
-    alerts.print().name("Alert STDOUT Sink");
-    allRuleEvaluations.print().setParallelism(1).name("Rule Evaluation Sink");
+    metrics.print().name("Metrics STDOUT Sink");
+    allMetricsEvaluations.print().setParallelism(1).name("Metrics Evaluation Sink");
 
-    DataStream<String> alertsJson = AlertsSink.alertsStreamToJson(alerts);
     DataStream<String> currentRulesJson = CurrentRulesSink.rulesStreamToJson(currentRules);
-
     currentRulesJson.print();
 
-    DataStreamSink<String> alertsSink = AlertsSink.addAlertsSink(config, alertsJson);
-    alertsSink.setParallelism(1).name("Alerts JSON Sink");
+    DataStream<String> metricsJson = MetricsSink.metricsStreamToJson(metrics);
+    DataStreamSink<String> metricsSink = MetricsSink.addMetricsSink(config, metricsJson);
+    metricsSink.setParallelism(1).name("Metrics JSON Sink");
 
     DataStreamSink<String> currentRulesSink =
         CurrentRulesSink.addRulesSink(config, currentRulesJson);
@@ -175,9 +173,6 @@ public class RulesEvaluator {
             : StreamExecutionEnvironment.getExecutionEnvironment();
 
     env.setStreamTimeCharacteristic(TimeCharacteristic.EventTime);
-    env.getCheckpointConfig().setCheckpointInterval(config.get(CHECKPOINT_INTERVAL));
-    env.getCheckpointConfig()
-        .setMinPauseBetweenCheckpoints(config.get(MIN_PAUSE_BETWEEN_CHECKPOINTS));
 
     configureRestartStrategy(env, rulesSourceEnumType);
     return env;

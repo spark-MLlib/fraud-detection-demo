@@ -68,10 +68,12 @@ public class DynamicKeyFunction
     int ruleCounter = 0;
     for (Map.Entry<Integer, Rule> entry : rulesState.immutableEntries()) {
       final Rule rule = entry.getValue();
-      out.collect(
-          new Keyed<>(
-              event, KeysExtractor.getKey(rule.getGroupingKeyNames(), event), rule.getRuleId()));
-      ruleCounter++;
+      if (RuleState.ACTIVE.equals(rule.getRuleState())) {
+          out.collect(
+                  new Keyed<>(
+                          event, KeysExtractor.getKey(rule.getGroupingKeyNames(), event), rule.getRuleId()));
+          ruleCounter++;
+      }
     }
     ruleCounterGauge.setValue(ruleCounter);
   }
