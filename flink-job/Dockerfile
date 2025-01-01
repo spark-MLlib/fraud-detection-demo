@@ -1,4 +1,4 @@
-FROM openjdk:11 AS job-build
+FROM openjdk:8 AS job-build
 WORKDIR /home/gradle/app/
 
 COPY build.gradle settings.gradle ./
@@ -10,14 +10,14 @@ RUN echo "class Dummy {}" > Dummy.java
 RUN ./gradlew build
 COPY . .
 RUN rm Dummy.java
-RUN ./gradlew build
-RUN mv /home/gradle/app/build/libs/dynamic-fraud-detection-demo*-deploy.jar /home/gradle/app/build/libs/dynamic-fraud-detection-demo-deploy.jar
+RUN ./gradlew build --stacktrace --info
+RUN mv /home/gradle/app/build/libs/real-time-metrics-engine*-deploy.jar /home/gradle/app/build/libs/real-time-metrics-engine-deploy.jar
 
 # ---
 
-FROM flink:1.15-java8
+FROM flink:1.17.2-java8
 
-COPY --from=job-build /home/gradle/app/build/libs/dynamic-fraud-detection-demo-deploy.jar lib/job.jar
+COPY --from=job-build /home/gradle/app/build/libs/real-time-metrics-engine-deploy.jar lib/job.jar
 COPY docker-entrypoint.sh /
 
 USER flink

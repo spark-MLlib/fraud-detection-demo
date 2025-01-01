@@ -18,11 +18,8 @@
 
 package com.ververica.field.dynamicrules.sources;
 
-import static com.ververica.field.config.Parameters.GCP_PROJECT_NAME;
-import static com.ververica.field.config.Parameters.GCP_PUBSUB_RULES_SUBSCRIPTION;
 import static com.ververica.field.config.Parameters.RULES_SOURCE;
 import static com.ververica.field.config.Parameters.RULES_TOPIC;
-import static com.ververica.field.config.Parameters.SOCKET_PORT;
 
 import com.ververica.field.config.Config;
 import com.ververica.field.dynamicrules.KafkaUtils;
@@ -38,10 +35,8 @@ import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsIni
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.functions.source.SocketTextStreamFunction;
 import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrdernessTimestampExtractor;
 import org.apache.flink.streaming.api.windowing.time.Time;
-import org.apache.flink.streaming.connectors.gcp.pubsub.PubSubSource;
 
 public class RulesSource {
 
@@ -72,20 +67,6 @@ public class RulesSource {
         // TODO: refactor when FLIP-238 is added
         dataStreamSource =
             env.fromSource(kafkaSource, WatermarkStrategy.noWatermarks(), "Rules Kafka Source");
-        break;
-      case PUBSUB:
-        PubSubSource<String> pubSubSourceFunction =
-            PubSubSource.<String>newBuilder()
-                .withDeserializationSchema(new SimpleStringSchema())
-                .withProjectName(config.get(GCP_PROJECT_NAME))
-                .withSubscriptionName(config.get(GCP_PUBSUB_RULES_SUBSCRIPTION))
-                .build();
-        dataStreamSource = env.addSource(pubSubSourceFunction);
-        break;
-      case SOCKET:
-        SocketTextStreamFunction socketSourceFunction =
-            new SocketTextStreamFunction("localhost", config.get(SOCKET_PORT), "\n", -1);
-        dataStreamSource = env.addSource(socketSourceFunction);
         break;
       default:
         throw new IllegalArgumentException(

@@ -34,7 +34,6 @@ import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.functions.sink.PrintSinkFunction;
-import org.apache.flink.streaming.connectors.gcp.pubsub.PubSubSink;
 
 public class LatencySink {
 
@@ -60,15 +59,6 @@ public class LatencySink {
                 .setDeliverGuarantee(DeliveryGuarantee.NONE)
                 .build();
         dataStreamSink = stream.sinkTo(kafkaSink);
-        break;
-      case PUBSUB:
-        PubSubSink<String> pubSubSinkFunction =
-            PubSubSink.<String>newBuilder()
-                .withSerializationSchema(new SimpleStringSchema())
-                .withProjectName(config.get(GCP_PROJECT_NAME))
-                .withTopicName(config.get(GCP_PUBSUB_LATENCY_SUBSCRIPTION))
-                .build();
-        dataStreamSink = stream.addSink(pubSubSinkFunction);
         break;
       case STDOUT:
         dataStreamSink = stream.addSink(new PrintSinkFunction<>(true));
