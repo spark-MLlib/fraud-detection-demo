@@ -70,7 +70,15 @@ public class RulePayload {
     SUM,
     AVG,
     MIN,
-    MAX
+    MAX,
+    COUNT
+  }
+
+  public enum WindowType {
+    GROWTH_WINDOW,
+    TUMBLING_WINDOWS,
+    SLIDING_WINDOW,
+    SESSION_WINDOW
   }
 
   public enum LimitOperatorType {

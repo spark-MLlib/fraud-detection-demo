@@ -21,11 +21,12 @@ const headers = { "Content-Type": "application/json" };
 const pickFields = pick([
   "aggregateFieldName",
   "aggregatorFunctionType",
+  "windowType",
   "groupingKeyNames",
   "limit",
   "limitOperatorType",
   "ruleState",
-  "windowMinutes",
+  "windowMinutes"
 ]);
 
 type ResponseError = {
@@ -38,16 +39,18 @@ const sampleRules: {
 } = {
   1: {
     aggregateFieldName: "paymentAmount",
-    aggregatorFunctionType: "SUM",
+    aggregatorFunctionType: "COUNT",
+    windowType: "GROWTH_WINDOW",
     groupingKeyNames: ["payeeId", "beneficiaryId"],
     limit: 20000000,
     limitOperatorType: "GREATER",
-    windowMinutes: 43200,
+    windowMinutes: 1440,
     ruleState: "ACTIVE",
   },
    2: {
      aggregateFieldName: "paymentAmount",
-     aggregatorFunctionType: "SUM",
+     aggregatorFunctionType: "COUNT",
+     windowType: "GROWTH_WINDOW",
      groupingKeyNames: ["beneficiaryId"],
      limit: 10000000,
      limitOperatorType: "GREATER_EQUAL",
@@ -56,7 +59,8 @@ const sampleRules: {
    },
   3: {
     aggregateFieldName: "COUNT_WITH_RESET_FLINK",
-    aggregatorFunctionType: "SUM",
+    aggregatorFunctionType: "COUNT",
+    windowType: "GROWTH_WINDOW",
     groupingKeyNames: ["paymentType"],
     limit: 100,
     limitOperatorType: "GREATER_EQUAL",
@@ -131,6 +135,16 @@ export const AddRuleModal: FC<Props> = props => {
               <option value="AVG">AVG</option>
               <option value="MIN">MIN</option>
               <option value="MAX">MAX</option>
+              <option value="COUNT">MAX</option>
+            </Input>
+          </FieldGroup>
+
+          <FieldGroup label="windowType" icon={faCalculator}>
+            <Input type="select" name="windowType" bsSize="sm">
+              <option value="GROWTH_WINDOW">GROWTH_WINDOW</option>
+              <option value="TUMBLING_WINDOWS">TUMBLING_WINDOWS</option>
+              <option value="SLIDING_WINDOW">SLIDING_WINDOW</option>
+              <option value="SESSION_WINDOW">SESSION_WINDOW</option>
             </Input>
           </FieldGroup>
 
