@@ -10,6 +10,9 @@ RUN echo "class Dummy {}" > Dummy.java
 RUN ./gradlew build
 COPY . .
 RUN rm Dummy.java
+#将项目中所有.java文件换行符CRLF转换为LF
+RUN apt-get update && apt-get install -y dos2unix && dos2unix gradlew
+RUN find ./ -name "*.java" | xargs dos2unix
 RUN ./gradlew build --stacktrace --info
 RUN mv /home/gradle/app/build/libs/real-time-metrics-engine*-deploy.jar /home/gradle/app/build/libs/real-time-metrics-engine-deploy.jar
 
