@@ -1,7 +1,7 @@
 FROM openjdk:8 AS job-build
 WORKDIR /home/gradle/app/
 
-COPY build.gradle settings.gradle ./
+COPY build.gradle settings.gradle gradle.properties ./
 COPY gradlew ./
 COPY gradle gradle
 # To cause download and cache of verifyGoogleJavaFormat dependency
