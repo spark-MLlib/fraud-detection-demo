@@ -80,7 +80,8 @@ public class Rule {
     SUM,
     AVG,
     MIN,
-    MAX
+    MAX,
+    COUNT
   }
 
   public enum LimitOperatorType {

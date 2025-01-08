@@ -51,6 +51,6 @@ public class KeysExtractor {
       throws IllegalAccessException, NoSuchFieldException {
     sb.append(fieldName);
     sb.append("=");
-    sb.append(FieldsExtractor.getFieldAsString(object, fieldName));
+    sb.append(FieldsExtractor.getFieldAsString(fieldName, object));
   }
 }

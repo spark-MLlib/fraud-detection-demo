@@ -35,10 +35,7 @@ import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.TimeCharacteristic;
-import org.apache.flink.streaming.api.datastream.BroadcastStream;
-import org.apache.flink.streaming.api.datastream.DataStream;
-import org.apache.flink.streaming.api.datastream.DataStreamSink;
-import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.apache.flink.streaming.api.datastream.*;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.timestamps.BoundedOutOfOrdernessTimestampExtractor;
 import org.apache.flink.streaming.api.windowing.time.Time;
@@ -85,9 +82,9 @@ public class MetricsEvaluator {
     BroadcastStream<Rule> rulesStream = rulesUpdateStream.broadcast(Descriptors.rulesDescriptor);
 
     // Processing pipeline setup
-    DataStream<Metric> metrics =
+      SingleOutputStreamOperator<Metric> metrics =
         transactions
-                // todo: 生成waterMark
+            // todo: 生成waterMark
             .connect(rulesStream)
             .process(new DynamicKeyFunction())
             .uid("DynamicKeyFunction")
@@ -99,13 +96,13 @@ public class MetricsEvaluator {
             .name("Dynamic Metrics Evaluation Function");
 
     DataStream<String> allMetricsEvaluations =
-        ((SingleOutputStreamOperator<Metric>) metrics).getSideOutput(Descriptors.demoSinkTag);
+        metrics.getSideOutput(Descriptors.demoSinkTag);
 
     DataStream<Long> latency =
-        ((SingleOutputStreamOperator<Metric>) metrics).getSideOutput(Descriptors.latencySinkTag);
+        metrics.getSideOutput(Descriptors.latencySinkTag);
 
     DataStream<Rule> currentRules =
-        ((SingleOutputStreamOperator<Metric>) metrics).getSideOutput(Descriptors.currentRulesSinkTag);
+        metrics.getSideOutput(Descriptors.currentRulesSinkTag);
 
     metrics.print().name("Metrics STDOUT Sink");
     allMetricsEvaluations.print().setParallelism(1).name("Metrics Evaluation Sink");
@@ -126,6 +123,7 @@ public class MetricsEvaluator {
             .timeWindowAll(Time.seconds(10))
             .aggregate(new AverageAggregate())
             .map(String::valueOf);
+    latencies.print().name("Latency STDOUT");
 
     DataStreamSink<String> latencySink = LatencySink.addLatencySink(config, latencies);
     latencySink.name("Latency Sink");

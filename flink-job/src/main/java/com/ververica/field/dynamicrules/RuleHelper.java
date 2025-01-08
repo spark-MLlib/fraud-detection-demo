@@ -18,10 +18,7 @@
 
 package com.ververica.field.dynamicrules;
 
-import com.ververica.field.dynamicrules.accumulators.AverageAccumulator;
-import com.ververica.field.dynamicrules.accumulators.BigDecimalCounter;
-import com.ververica.field.dynamicrules.accumulators.BigDecimalMaximum;
-import com.ververica.field.dynamicrules.accumulators.BigDecimalMinimum;
+import com.ververica.field.dynamicrules.accumulators.*;
 import java.math.BigDecimal;
 import org.apache.flink.api.common.accumulators.SimpleAccumulator;
 
@@ -31,6 +28,7 @@ public class RuleHelper {
   /* Picks and returns a new accumulator, based on the Rule's aggregator function type. */
   public static SimpleAccumulator<BigDecimal> getAggregator(Rule rule) {
     switch (rule.getAggregatorFunctionType()) {
+      case COUNT:
       case SUM:
         return new BigDecimalCounter();
       case AVG:
@@ -44,4 +42,18 @@ public class RuleHelper {
             "Unsupported aggregation function type: " + rule.getAggregatorFunctionType());
     }
   }
+
+    public static SimpleAccumulator<BigDecimal> execAccumulatorAdd(Transaction transaction ,Rule rule, SimpleAccumulator<BigDecimal> accumulator) throws NoSuchFieldException, IllegalAccessException {
+        BigDecimal aggregatedValue =
+                FieldsExtractor.getBigDecimalByName(rule.getAggregateFieldName(), transaction);
+        accumulator.add(aggregatedValue);
+        return accumulator;
+    }
+
+    public static SimpleAccumulator<BigDecimal> ensureToCreateAccumulator(Rule rule, SimpleAccumulator<BigDecimal> accumulator) {
+        if (accumulator == null) {
+            accumulator = getAggregator(rule);
+        }
+        return accumulator;
+    }
 }

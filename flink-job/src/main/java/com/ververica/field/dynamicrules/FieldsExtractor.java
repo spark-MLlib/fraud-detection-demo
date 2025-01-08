@@ -23,23 +23,26 @@ import java.math.BigDecimal;
 
 public class FieldsExtractor {
 
-  public static String getFieldAsString(Object object, String fieldName)
+  public static Object getFieldAsObject(String fieldName, Object object)
       throws IllegalAccessException, NoSuchFieldException {
     Class cls = object.getClass();
     Field field = cls.getField(fieldName);
-    return field.get(object).toString();
+    return field.get(object);
+  }
+
+  public static String getFieldAsString(String fieldName, Object object)
+      throws IllegalAccessException, NoSuchFieldException {
+    return getFieldAsObject(fieldName, object).toString();
   }
 
   public static double getDoubleByName(String fieldName, Object object)
       throws NoSuchFieldException, IllegalAccessException {
-    Field field = object.getClass().getField(fieldName);
-    return (double) field.get(object);
+    return (double) getFieldAsObject(fieldName, object);
   }
 
   public static BigDecimal getBigDecimalByName(String fieldName, Object object)
       throws NoSuchFieldException, IllegalAccessException {
-    Field field = object.getClass().getField(fieldName);
-    return new BigDecimal(field.get(object).toString());
+    return new BigDecimal(getFieldAsString(fieldName, object));
   }
 
   @SuppressWarnings("unchecked")
