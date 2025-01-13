@@ -42,6 +42,8 @@ public class Rule {
   private Integer windowMinutes;
   private ControlType controlType;
   private WindowType windowType;
+  private List<MetricsOutTag> metricsOutTags;
+  private MetricsCode metricsCode;
 
   public Long getWindowMillis() {
     return Time.minutes(this.windowMinutes).toMilliseconds();
@@ -123,9 +125,31 @@ public class Rule {
   }
 
   public enum WindowType {
-      GROWTH_WINDOW,
+    GROWTH_WINDOW,
     TUMBLING_WINDOWS,
     SLIDING_WINDOW,
     SESSION_WINDOW
+  }
+
+  public enum MetricsCategory {
+    //Below are Current Categories
+    CurrentNumber,
+    //Below are Historical Categories
+    TotalNumber,
+    AverageNumber,
+    //Below are CurrentState Categories
+    CurrentState
+  }
+
+  public enum MetricsOutTag {
+    InMemoryDB,
+    TimeSeriesDB,
+    MessageQueue
+  }
+
+  public enum MetricsCode {
+    TotalNumberCallRing,
+    TotalNumberInternalCalls,
+    CurrentIdleAgent
   }
 }

@@ -19,9 +19,13 @@
 package com.ververica.field.dynamicrules.functions;
 
 import com.ververica.field.dynamicrules.*;
+import com.ververica.field.dynamicrules.Rule;
 import com.ververica.field.dynamicrules.Rule.ControlType;
 import com.ververica.field.dynamicrules.Rule.RuleState;
-import com.ververica.field.dynamicrules.RulesEvaluator.Descriptors;
+import com.ververica.field.dynamicrules.MetricsEvaluator.Descriptors;
+import com.ververica.field.dynamicrules.Metric;
+import com.ververica.field.dynamicrules.metrics.MetricsInMemory;
+import com.ververica.field.dynamicrules.Transaction;
 import com.ververica.field.windowing.assigners.WindowAssigner;
 import com.ververica.field.windowing.windows.TimeWindow;
 import lombok.extern.slf4j.Slf4j;
@@ -36,13 +40,11 @@ import org.apache.flink.metrics.Meter;
 import org.apache.flink.metrics.MeterView;
 import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction;
 import org.apache.flink.util.Collector;
-
 import java.math.BigDecimal;
 import java.util.Iterator;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
-
 import static com.ververica.field.dynamicrules.functions.ProcessingUtils.addToStateValuesSet;
 import static com.ververica.field.dynamicrules.functions.ProcessingUtils.handleRuleBroadcast;
 
@@ -62,23 +64,23 @@ public class DynamicMetricsCalcFunction
   private Meter alertMeter;
 
   // TODO: 1.考虑做状态生命周期的统一管理
-  private MapStateDescriptor<Long, Set<Transaction>> windowStateDescriptor =
+  private final MapStateDescriptor<Long, Set<Transaction>> windowStateDescriptor =
       new MapStateDescriptor<>(
           "windowState",
           BasicTypeInfo.LONG_TYPE_INFO,
           TypeInformation.of(new TypeHint<Set<Transaction>>() {}));
 
-    private transient MapState<String, SimpleAccumulator<BigDecimal>> growthWindowState;
-    private final MapStateDescriptor<String, SimpleAccumulator<BigDecimal>> growthWindowStateDescriptor =
-            new MapStateDescriptor<>(
-                    "growthWindowState",
-                    BasicTypeInfo.STRING_TYPE_INFO,
-                    TypeInformation.of(new TypeHint<SimpleAccumulator<BigDecimal>>() {}));
+  private transient MapState<String, SimpleAccumulator<BigDecimal>> growthWindowState;
+  private final MapStateDescriptor<String, SimpleAccumulator<BigDecimal>> growthWindowStateDescriptor =
+          new MapStateDescriptor<>(
+                  "growthWindowState",
+                  BasicTypeInfo.STRING_TYPE_INFO,
+                  TypeInformation.of(new TypeHint<SimpleAccumulator<BigDecimal>>() {}));
 
-    private transient ValueState<Long> growthWindowStatecleanupTime;
+  private transient ValueState<Long> growthWindowStatecleanupTime;
 
-    @Override
-    public void open(Configuration parameters) {
+  @Override
+  public void open(Configuration parameters) {
 
     windowState = getRuntimeContext().getMapState(windowStateDescriptor);
     growthWindowState = getRuntimeContext().getMapState(growthWindowStateDescriptor);
@@ -97,95 +99,102 @@ public class DynamicMetricsCalcFunction
       log.error("Rule with ID {} does not exist", value.getId());
       return;
     }
+
     if (Rule.WindowType.GROWTH_WINDOW == rule.getWindowType()) {
-        long currentEventTime = value.getWrapped().getEventTime();
+      long currentEventTime = value.getWrapped().getEventTime();
 
-        if (rule.getRuleState() == RuleState.ACTIVE) {
-            TimeWindow timeWindow = WindowAssigner.assignWindow(currentEventTime, rule);
+      if (rule.getRuleState() == RuleState.ACTIVE) {
+        TimeWindow timeWindow = WindowAssigner.assignWindow(currentEventTime, rule);
 
-            // 注册状态清理时间
-            long cleanupTime = timeWindow.maxTimestamp();
-            // 更新增长窗口状态清除时间
-            Long growthWindowStatecleanupTimeValue = growthWindowStatecleanupTime.value();
-            if (growthWindowStatecleanupTimeValue == null || growthWindowStatecleanupTimeValue < cleanupTime) {
-                growthWindowStatecleanupTime.update(cleanupTime);
-            }
-
-            ctx.timerService().registerEventTimeTimer(cleanupTime);
-
-            // Calculate the aggregate value
-            SimpleAccumulator<BigDecimal> aggregator;
-            // TODO 增长窗口的key计划暂定为 ruleId + groupId,未来可能变化
-            String key = rule.getRuleId() + "|" +value.getKey();
-            aggregator = growthWindowState.get(key);
-            aggregator = RuleHelper.ensureToCreateAccumulator(rule,aggregator);
-            aggregator.add(BigDecimal.ONE);
-            growthWindowState.put(key, aggregator);
-
-            BigDecimal aggregateResult = aggregator.getLocalValue();
-
-            ctx.output(
-                    Descriptors.demoSinkTag,
-                    "Rule "
-                            + rule.getRuleId()
-                            + " | "
-                            + value.getKey()
-                            + " | "
-                            + rule.getWindowType()
-                            + " | "
-                            + rule.getAggregatorFunctionType()
-                            + " : "
-                            + aggregateResult.toString()
-                            + " -> "
-                            + "DEFAULT");
-            out.collect(
-                    new Metric<>(
-                            rule.getRuleId(), rule, value.getKey(), value.getWrapped(), aggregateResult));
+        // 注册状态清理时间
+        long cleanupTime = timeWindow.maxTimestamp();
+        // 更新增长窗口状态清除时间
+        Long growthWindowStatecleanupTimeValue = growthWindowStatecleanupTime.value();
+        if (growthWindowStatecleanupTimeValue == null || growthWindowStatecleanupTimeValue < cleanupTime) {
+            growthWindowStatecleanupTime.update(cleanupTime);
         }
-    } else {
-        // Add Transaction to state
-        long currentEventTime = value.getWrapped().getEventTime();
-        addToStateValuesSet(windowState, currentEventTime, value.getWrapped());
 
-        long ingestionTime = value.getWrapped().getIngestionTimestamp();
-        ctx.output(Descriptors.latencySinkTag, System.currentTimeMillis() - ingestionTime);
-
+        ctx.timerService().registerEventTimeTimer(cleanupTime);
 
         // Calculate the aggregate value
-        if (noRuleAvailable(rule)) {
-            log.error("Rule with ID {} does not exist", value.getId());
-            return;
+        SimpleAccumulator<BigDecimal> aggregator;
+        // TODO 增长窗口的key计划暂定为 ruleId + groupId,未来可能变化
+        String key = rule.getRuleId() + "|" +value.getKey();
+        aggregator = growthWindowState.get(key);
+        aggregator = RuleHelper.ensureToCreateAccumulator(rule,aggregator);
+        aggregator.add(BigDecimal.ONE);
+        growthWindowState.put(key, aggregator);
+
+        BigDecimal aggregateResult = aggregator.getLocalValue();
+
+          ctx.output(
+                  Descriptors.demoSinkTag,
+                  "Rule "
+                          + rule.getRuleId()
+                          + " | "
+                          + value.getKey()
+                          + " : "
+                          + aggregateResult.toString()
+                          + " -> "
+                          + "DEFAULT");
+
+          out.collect(
+                  new Metric<>(
+                          rule.getRuleId(), rule, value.getKey(), value.getWrapped(), aggregateResult));
+        if (rule.getMetricsOutTags().contains(Rule.MetricsOutTag.InMemoryDB)) {
+            // TODO 根据实际修改
+            // TenantID:EntityID(Campaign/Agent等)
+            String entityKey = "TenantID:" + value.getKey();
+            String metricCode = String.valueOf(rule.getMetricsCode());
+            String metricValue = String.valueOf(aggregateResult);
+            ctx.output(Descriptors.redisSinkTag, new MetricsInMemory(entityKey, metricCode, metricValue));
         }
-        if (rule.getRuleState() == RuleState.ACTIVE) {
-            TimeWindow timeWindow = WindowAssigner.assignWindow(currentEventTime, rule);
-            Long windowStartForEvent = timeWindow.getStart();
+      }
+      long ingestionTime = value.getWrapped().getIngestionTimestamp();
+      ctx.output(Descriptors.latencySinkTag, System.currentTimeMillis() - ingestionTime);
+    } else {
+      // Add Transaction to state
+      long currentEventTime = value.getWrapped().getEventTime();
+      addToStateValuesSet(windowState, currentEventTime, value.getWrapped());
 
-            long cleanupTime = (currentEventTime / 1000) * 1000;
-            ctx.timerService().registerEventTimeTimer(cleanupTime);
+      long ingestionTime = value.getWrapped().getIngestionTimestamp();
+      ctx.output(Descriptors.latencySinkTag, System.currentTimeMillis() - ingestionTime);
 
-            SimpleAccumulator<BigDecimal> aggregator = RuleHelper.getAggregator(rule);
-            for (Long stateEventTime : windowState.keys()) {
-                if (isStateValueInWindow(stateEventTime, windowStartForEvent, currentEventTime)) {
-                    aggregateValuesInState(stateEventTime, aggregator, rule);
-                }
-            }
-            BigDecimal aggregateResult = aggregator.getLocalValue();
 
-            ctx.output(
-                Descriptors.demoSinkTag,
-                "Rule "
-                        + rule.getRuleId()
-                        + " | "
-                        + value.getKey()
-                        + " : "
-                        + aggregateResult.toString()
-                        + " -> "
-                        + "DEFAULT");
+      // Calculate the aggregate value
+      if (noRuleAvailable(rule)) {
+        log.error("Rule with ID {} does not exist", value.getId());
+        return;
+      }
+      if (rule.getRuleState() == RuleState.ACTIVE) {
+        Long windowStartForEvent = rule.getWindowStartFor(currentEventTime);
 
-            out.collect(
-                    new Metric<>(
-                            rule.getRuleId(), rule, value.getKey(), value.getWrapped(), aggregateResult));
+        long cleanupTime = (currentEventTime / 1000) * 1000;
+        ctx.timerService().registerEventTimeTimer(cleanupTime);
+
+        SimpleAccumulator<BigDecimal> aggregator = RuleHelper.getAggregator(rule);
+        for (Long stateEventTime : windowState.keys()) {
+          if (isStateValueInWindow(stateEventTime, windowStartForEvent, currentEventTime)) {
+              aggregateValuesInState(stateEventTime, aggregator, rule);
+          }
         }
+        BigDecimal aggregateResult = aggregator.getLocalValue();
+
+        ctx.output(
+               Descriptors.demoSinkTag,
+               "Rule "
+                         + rule.getRuleId()
+                         + " | "
+                         + value.getKey()
+                         + " : "
+                         + aggregateResult.toString()
+                         + " -> "
+                         + "DEFAULT");
+
+        out.collect(
+                new Metric<>(
+                        rule.getRuleId(), rule, value.getKey(), value.getWrapped(), aggregateResult));
+      }
     }
   }
 
@@ -234,17 +243,18 @@ public class DynamicMetricsCalcFunction
   }
 
   private void aggregateValuesInState(
-      Long stateEventTime, SimpleAccumulator<BigDecimal> aggregator, Rule rule) throws Exception {
+          Long stateEventTime, SimpleAccumulator<BigDecimal> aggregator, Rule rule) throws Exception {
     Set<Transaction> inWindow = windowState.get(stateEventTime);
+    // TODO: count这类统计方法，最好由AggregatorFunctionType指定
     if (COUNT.equals(rule.getAggregateFieldName())
-        || COUNT_WITH_RESET.equals(rule.getAggregateFieldName())) {
+            || COUNT_WITH_RESET.equals(rule.getAggregateFieldName())) {
       for (Transaction event : inWindow) {
         aggregator.add(BigDecimal.ONE);
       }
     } else {
       for (Transaction event : inWindow) {
         BigDecimal aggregatedValue =
-            FieldsExtractor.getBigDecimalByName(rule.getAggregateFieldName(), event);
+                FieldsExtractor.getBigDecimalByName(rule.getAggregateFieldName(), event);
         aggregator.add(aggregatedValue);
       }
     }
@@ -283,21 +293,21 @@ public class DynamicMetricsCalcFunction
 
     Rule widestWindowRule = ctx.getBroadcastState(Descriptors.rulesDescriptor).get(WIDEST_RULE_KEY);
 
-      // 清除增长窗口的状态
-      if (Rule.WindowType.GROWTH_WINDOW == widestWindowRule.getWindowType()) {
-          Long growthWindowStatecleanupTimeValue = growthWindowStatecleanupTime.value();
-          if (growthWindowStatecleanupTimeValue != null && timestamp >= growthWindowStatecleanupTimeValue) {
-              log.info("开始清除增长窗口状态，清理之前值为:{}", growthWindowState.entries().iterator().next().getValue());
-              growthWindowState.clear();
-          }
-      } else { // 清除非增长窗口的状态
-          Optional<Long> cleanupEventTimeWindow =
-              Optional.ofNullable(widestWindowRule).map(Rule::getWindowMillis);
-          Optional<Long> cleanupEventTimeThreshold =
-              cleanupEventTimeWindow.map(window -> timestamp - window);
-          // TODO 在数据量特别大时，极可能存在性能风险
-          cleanupEventTimeThreshold.ifPresent(this::evictAgedElementsFromWindow);
+    // 清除增长窗口的状态
+    if (Rule.WindowType.GROWTH_WINDOW == widestWindowRule.getWindowType()) {
+      Long growthWindowStatecleanupTimeValue = growthWindowStatecleanupTime.value();
+      if (growthWindowStatecleanupTimeValue != null && timestamp >= growthWindowStatecleanupTimeValue) {
+        log.info("开始清除增长窗口状态，清理之前值为:{}", growthWindowState.entries().iterator().next().getValue());
+        growthWindowState.clear();
       }
+    } else { // 清除非增长窗口的状态
+      Optional<Long> cleanupEventTimeWindow =
+              Optional.ofNullable(widestWindowRule).map(Rule::getWindowMillis);
+      Optional<Long> cleanupEventTimeThreshold =
+              cleanupEventTimeWindow.map(window -> timestamp - window);
+      // TODO 在数据量特别大时，极可能存在性能风险
+      cleanupEventTimeThreshold.ifPresent(this::evictAgedElementsFromWindow);
+    }
   }
 
   private void evictAgedElementsFromWindow(Long threshold) {

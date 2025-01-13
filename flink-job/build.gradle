@@ -17,7 +17,8 @@
 
 buildscript {
     repositories {
-        jcenter() // this applies only to the Gradle 'Shadow' plugin
+        mavenCentral()
+        jcenter() // this applies only to the Gradle 'Shadow' plugin. jcenter已经停止维护
     }
     dependencies {
         classpath 'com.github.jengelman.gradle.plugins:shadow:4.0.1'
@@ -118,6 +119,8 @@ dependencies {
     implementation "org.apache.flink:flink-streaming-java:$flinkVersion:tests"
     implementation "org.apache.flink:flink-runtime:$flinkVersion:tests"
     implementation "org.mockito:mockito-all:$mockitoVersion"
+//    implementation "org.apache.bahir:flink-connector-redis_2.11:1.0"
+    implementation "redis.clients:jedis:5.2.0"
 
 //    For Gradle 7 use:
     compileOnly 'org.projectlombok:lombok:1.18.24'

@@ -19,12 +19,15 @@
 package com.ververica.field.dynamicrules;
 
 import com.ververica.field.config.Config;
+import com.ververica.field.config.Parameters;
+import com.ververica.field.dynamicrules.metrics.MetricsInMemory;
 import com.ververica.field.dynamicrules.functions.AverageAggregate;
 import com.ververica.field.dynamicrules.functions.DynamicMetricsCalcFunction;
 import com.ververica.field.dynamicrules.functions.DynamicKeyFunction;
 import com.ververica.field.dynamicrules.sinks.CurrentRulesSink;
 import com.ververica.field.dynamicrules.sinks.LatencySink;
 import com.ververica.field.dynamicrules.sinks.MetricsSink;
+import com.ververica.field.dynamicrules.sinks.RedisSink;
 import com.ververica.field.dynamicrules.sources.RulesSource;
 import com.ververica.field.dynamicrules.sources.TransactionsSource;
 import lombok.extern.slf4j.Slf4j;
@@ -32,6 +35,7 @@ import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.ConfigConstants;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.TimeCharacteristic;
@@ -49,10 +53,14 @@ import static com.ververica.field.config.Parameters.*;
 @Slf4j
 public class MetricsEvaluator {
 
-  private Config config;
+  private final Config config;
+  private String[] args;
 
-  MetricsEvaluator(Config config) {
-    this.config = config;
+  MetricsEvaluator(String[] args) {
+    this.args = args;
+    ParameterTool tool = ParameterTool.fromArgs(args);
+    Parameters inputParams = new Parameters(tool);
+    this.config = new Config(inputParams, STRING_PARAMS, INT_PARAMS, BOOL_PARAMS);
   }
 
   public void run() throws Exception {
@@ -62,17 +70,18 @@ public class MetricsEvaluator {
     boolean isLocal = config.get(LOCAL_EXECUTION);
     boolean enableCheckpoints = config.get(ENABLE_CHECKPOINTS);
     int checkpointsInterval = config.get(CHECKPOINT_INTERVAL);
-    int minPauseBtwnCheckpoints = config.get(CHECKPOINT_INTERVAL);
+    int minPauseBtwnCheckpoints = config.get(MIN_PAUSE_BETWEEN_CHECKPOINTS);
 
     // Environment setup
     StreamExecutionEnvironment env = configureStreamExecutionEnvironment(rulesSourceType, isLocal);
+    // 将客户端参数设置为flink全局参数, 方便在taskManager端使用
+    ParameterTool parameterTool = ParameterTool.fromArgs(args);
+    env.getConfig().setGlobalJobParameters(parameterTool);
 
     if (enableCheckpoints) {
+      // TODO: 补全重要的checkpoint相关配置，例如状态后端、超时时间、是否对齐检查点、保留策略等
       env.enableCheckpointing(checkpointsInterval);
       env.getCheckpointConfig().setMinPauseBetweenCheckpoints(minPauseBtwnCheckpoints);
-      env.getCheckpointConfig().setCheckpointInterval(config.get(CHECKPOINT_INTERVAL));
-      env.getCheckpointConfig()
-              .setMinPauseBetweenCheckpoints(config.get(MIN_PAUSE_BETWEEN_CHECKPOINTS));
     }
 
     // Streams setup
@@ -82,9 +91,9 @@ public class MetricsEvaluator {
     BroadcastStream<Rule> rulesStream = rulesUpdateStream.broadcast(Descriptors.rulesDescriptor);
 
     // Processing pipeline setup
-      SingleOutputStreamOperator<Metric> metrics =
+    SingleOutputStreamOperator<Metric> metrics =
         transactions
-            // todo: 生成waterMark
+            // TODO: 可选的waterMark
             .connect(rulesStream)
             .process(new DynamicKeyFunction())
             .uid("DynamicKeyFunction")
@@ -103,6 +112,9 @@ public class MetricsEvaluator {
 
     DataStream<Rule> currentRules =
         metrics.getSideOutput(Descriptors.currentRulesSinkTag);
+
+    DataStream<MetricsInMemory> redisResDataStream = metrics.getSideOutput(Descriptors.redisSinkTag);
+    RedisSink.addRedisSink(redisResDataStream);
 
     metrics.print().name("Metrics STDOUT Sink");
     allMetricsEvaluations.print().setParallelism(1).name("Metrics Evaluation Sink");
@@ -212,5 +224,6 @@ public class MetricsEvaluator {
     public static final OutputTag<Long> latencySinkTag = new OutputTag<Long>("latency-sink") {};
     public static final OutputTag<Rule> currentRulesSinkTag =
         new OutputTag<Rule>("current-rules-sink") {};
+    public static final OutputTag<MetricsInMemory> redisSinkTag = new OutputTag<MetricsInMemory>("redis-sink") {};
   }
 }

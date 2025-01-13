@@ -82,6 +82,7 @@ public class TransactionsSource {
     return transactionStrings
         .flatMap(new JsonDeserializer<Transaction>(Transaction.class))
         .returns(Transaction.class)
+        // TODO 修改成EventTime语义
         .flatMap(new TimeStamper<Transaction>())
         .returns(Transaction.class)
         .name("Transactions Deserialization");

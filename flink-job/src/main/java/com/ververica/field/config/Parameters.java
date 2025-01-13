@@ -82,6 +82,10 @@ public class Parameters {
   // Socket
   public static final Param<Integer> SOCKET_PORT = Param.integer("pubsub-rules-export", 9999);
 
+  // Redis:
+  public static final Param<String> REDIS_HOST = Param.string("redis-host", "localhost");
+  public static final Param<Integer> REDIS_PORT = Param.integer("redis-port", 6379);
+
   // General:
   //    source/sink types: kafka / pubsub / socket
   public static final Param<String> RULES_SOURCE = Param.string("rules-source", "SOCKET");
@@ -126,7 +130,8 @@ public class Parameters {
           ALERTS_SINK,
           METRICS_SINK,
           LATENCY_SINK,
-          RULES_EXPORT_SINK);
+          RULES_EXPORT_SINK,
+          REDIS_HOST);
 
   public static final List<Param<Integer>> INT_PARAMS =
       Arrays.asList(
@@ -136,7 +141,8 @@ public class Parameters {
           SOURCE_PARALLELISM,
           CHECKPOINT_INTERVAL,
           MIN_PAUSE_BETWEEN_CHECKPOINTS,
-          OUT_OF_ORDERNESS);
+          OUT_OF_ORDERNESS,
+          REDIS_PORT);
 
   public static final List<Param<Boolean>> BOOL_PARAMS =
       Arrays.asList(LOCAL_EXECUTION, ENABLE_CHECKPOINTS);
