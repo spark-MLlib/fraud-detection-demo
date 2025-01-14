@@ -1,8 +1,8 @@
-version: "2.2"
+version: "2.1"
 services:
 
   ### Zookeeper ###
-
+  
   zoo1:
     image: zookeeper:3.4.9
     restart: unless-stopped
@@ -29,13 +29,13 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_LOG4J_LOGGERS: "kafka.controller=INFO,kafka.producer.async.DefaultEventHandler=INFO,state.change.logger=INFO"
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     depends_on:
     - zoo1
 
   ### Schema Registry ###
 
   schema-registry:
-    entrypoint: ["echo", "Optional component. Remove this line (entrypoint) to enable"]
     image: confluentinc/cp-schema-registry:5.2.1
     hostname: schema-registry
     ports:
@@ -51,7 +51,6 @@ services:
   ### Schema Registry UI ###
 
   schema-registry-ui:
-    entrypoint: ["echo", "Optional component. Remove this line (entrypoint) to enable"]
     image: landoop/schema-registry-ui:0.9.4
     hostname: schema-registry-ui
     ports:
@@ -62,25 +61,34 @@ services:
     depends_on:
     - schema-registry
 
-  ### Flink Job Cluster ###
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka-cp-kafka-headless
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: "local"
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: "kafka-cp-kafka-headless:9092"
+      KAFKA_CLUSTERS_0_ZOOKEEPER: "zoo1:2181"
 
+  ### Flink Job Cluster ###
   flink-master:
     image: ${FLINK_DOCKER_IMAGE_NAME:-flink-job-fraud-demo:latest}
     ports:
       - "8081:8081"
     command: job-cluster --job-classname com.ververica.field.dynamicrules.Main -Djobmanager.rpc.address=flink-master -Dparallelism.default=2 --data-source kafka --rules-source kafka --alerts-sink kafka --rules-export-sink kafka --latency-sink kafka --kafka-host kafka-cp-kafka-headless --kafka-port 9092
     depends_on:
-    - kafka-cp-kafka-headless
+      - kafka-cp-kafka-headless
 
   flink-task-manager:
     image: ${FLINK_DOCKER_IMAGE_NAME:-flink-job-fraud-demo:latest}
     command: task-manager -Djobmanager.rpc.address=flink-master
-    scale: ${DEFAULT_PARALLELISM:-2}
     depends_on:
-    - kafka-cp-kafka-headless
+      - kafka-cp-kafka-headless
 
   ### Spring Boot Demo###
-
   demo:
     image: demo-fraud-webapp:latest
     hostname: demo
@@ -89,3 +97,33 @@ services:
     depends_on:
       - zoo1
       - kafka-cp-kafka-headless
+
+  redis:
+    image: redis:latest        # 使用官方的 Redis 镜像
+    container_name: redis      # 设置容器的名称
+    ports:
+      - "6379:6379"            # 映射端口，主机的 6379 端口映射到容器的 6379 端口
+    volumes:
+      - redis-data:/data      # 使用卷来持久化数据
+    networks:
+      - redis-net
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    ports:
+      - "8081:8081"                  # Web UI 端口
+    networks:
+      - redis-net
+    environment:
+      - REDIS_HOST=redis            # 连接 Redis 服务
+      - REDIS_PORT=6379
+    restart: unless-stopped
+
+volumes:
+  redis-data:               # 定义持久化存储卷
+    driver: local            # 使用本地驱动
+
+networks:
+  redis-net:
+    driver: bridge
