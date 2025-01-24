@@ -14,7 +14,7 @@ public class TimeWindow extends Window {
 
     @Override
     public long maxTimestamp() {
-        return 0;
+        return end - 1;
     }
 
     public long getStart() {
