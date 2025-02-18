@@ -19,7 +19,7 @@
 package com.ververica.field.dynamicrules;
 
 import java.math.BigDecimal;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
@@ -30,6 +30,8 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.core.JsonProcessingException;
+import org.apache.flink.shaded.jackson2.com.fasterxml.jackson.databind.ObjectMapper;
 
 @Data
 @Builder
@@ -44,10 +46,12 @@ public class Transaction implements TimestampAssignable<Long> {
   public PaymentType paymentType;
   private Long ingestionTimestamp;
 
+  private static final ObjectMapper objectMapper = new ObjectMapper();
+
   private static transient DateTimeFormatter timeFormatter =
       DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-          .withLocale(Locale.US)
-          .withZone(ZoneOffset.UTC);
+              .withLocale(Locale.CHINA)
+              .withZone(ZoneId.of("Asia/Shanghai"));
 
   public enum PaymentType {
     CSH("CSH"),
@@ -104,5 +108,9 @@ public class Transaction implements TimestampAssignable<Long> {
   @Override
   public void assignIngestionTimestamp(Long timestamp) {
     this.ingestionTimestamp = timestamp;
+  }
+
+  public static Transaction parseJson(String transactionStr) throws JsonProcessingException {
+    return objectMapper.readValue(transactionStr, Transaction.class);
   }
 }
