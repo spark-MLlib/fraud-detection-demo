@@ -77,8 +77,6 @@ public class DynamicMetricsCalcFunction
                   BasicTypeInfo.STRING_TYPE_INFO,
                   TypeInformation.of(new TypeHint<SimpleAccumulator<BigDecimal>>() {}));
 
-  private transient ValueState<Long> growthWindowStatecleanupTime;
-
   @Override
   public void open(Configuration parameters) {
 
@@ -86,8 +84,6 @@ public class DynamicMetricsCalcFunction
     growthWindowState = getRuntimeContext().getMapState(growthWindowStateDescriptor);
     alertMeter = new MeterView(60);
     getRuntimeContext().getMetricGroup().meter("alertsPerSecond", alertMeter);
-    growthWindowStatecleanupTime = getRuntimeContext().getState(
-            new ValueStateDescriptor<>("growthWindowStateClearedTime", Types.LONG));
   }
 
   @Override
@@ -108,12 +104,6 @@ public class DynamicMetricsCalcFunction
 
         // 注册状态清理时间
         long cleanupTime = timeWindow.maxTimestamp();
-        // 更新增长窗口状态清除时间
-        Long growthWindowStatecleanupTimeValue = growthWindowStatecleanupTime.value();
-        if (growthWindowStatecleanupTimeValue == null || growthWindowStatecleanupTimeValue < cleanupTime) {
-            growthWindowStatecleanupTime.update(cleanupTime);
-        }
-
         ctx.timerService().registerEventTimeTimer(cleanupTime);
 
         // Calculate the aggregate value
@@ -133,6 +123,10 @@ public class DynamicMetricsCalcFunction
                           + rule.getRuleId()
                           + " | "
                           + value.getKey()
+                          + " | "
+                          + rule.getWindowType()
+                          + " | "
+                          + rule.getAggregatorFunctionType()
                           + " : "
                           + aggregateResult.toString()
                           + " -> "
@@ -150,6 +144,7 @@ public class DynamicMetricsCalcFunction
             ctx.output(Descriptors.redisSinkTag, new MetricsInMemory(entityKey, metricCode, metricValue));
         }
       }
+
       long ingestionTime = value.getWrapped().getIngestionTimestamp();
       ctx.output(Descriptors.latencySinkTag, System.currentTimeMillis() - ingestionTime);
     } else {
@@ -295,8 +290,8 @@ public class DynamicMetricsCalcFunction
 
     // 清除增长窗口的状态
     if (Rule.WindowType.GROWTH_WINDOW == widestWindowRule.getWindowType()) {
-      Long growthWindowStatecleanupTimeValue = growthWindowStatecleanupTime.value();
-      if (growthWindowStatecleanupTimeValue != null && timestamp >= growthWindowStatecleanupTimeValue) {
+      TimeWindow timeWindow = WindowAssigner.assignWindow(timestamp, widestWindowRule);
+      if (timeWindow.maxTimestamp() == timestamp) {
         log.info("开始清除增长窗口状态，清理之前值为:{}", growthWindowState.entries().iterator().next().getValue());
         growthWindowState.clear();
       }
